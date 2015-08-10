@@ -71,6 +71,6 @@ func runCmd(_ *Command, args []string) {
 		output   = glockfileWriter(importPath, *cmdN)
 	)
 	outputCmds(output, cmds)
-	outputDeps(output, depRoots)
+	outputDeps(output, depRoots, map[string]staticImport{})
 	output.Close()
 }

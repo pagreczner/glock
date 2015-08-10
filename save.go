@@ -48,10 +48,48 @@ func runSave(cmd *Command, args []string) {
 		depRoots   = calcDepRoots(importPath, cmds)
 	)
 
+	statics := readGlockFileStatics(importPath)
+
 	output := glockfileWriter(importPath, *saveN)
 	outputCmds(output, cmds)
-	outputDeps(output, depRoots)
+	outputDeps(output, depRoots, statics)
 	output.Close()
+
+}
+
+type staticImport struct {
+	Repo string
+	Cmd  string
+}
+
+func readGlockFileStatics(importPath string) map[string]staticImport {
+	output := make(map[string]staticImport)
+
+	reader := glockfileReader(importPath, false)
+	defer reader.Close()
+
+	foundStatic := false
+
+	scanner := bufio.NewScanner(reader)
+	for scanner.Scan() {
+		line := strings.Trim(scanner.Text(), " ")
+
+		if foundStatic {
+			splitData := strings.Split(line, " ")
+			if len(splitData) == 2 {
+				output[splitData[0]] = staticImport{
+					Repo: splitData[0],
+					Cmd:  line,
+				}
+			}
+		}
+
+		if !foundStatic && line == "--glock static" {
+			foundStatic = true
+		}
+	}
+	return output
+
 }
 
 func outputCmds(w io.Writer, cmds []string) {
@@ -65,7 +103,7 @@ func outputCmds(w io.Writer, cmds []string) {
 	}
 }
 
-func outputDeps(w io.Writer, depRoots []*repoRoot) {
+func outputDeps(w io.Writer, depRoots []*repoRoot, statics map[string]staticImport) {
 	for _, repoRoot := range depRoots {
 		revision, err := repoRoot.vcs.head(
 			path.Join(gopath(), "src", repoRoot.root),
@@ -74,7 +112,15 @@ func outputDeps(w io.Writer, depRoots []*repoRoot) {
 			perror(err)
 		}
 		revision = strings.TrimSpace(revision)
-		fmt.Fprintln(w, repoRoot.root, revision)
+		if _, ok := statics[repoRoot.root]; !ok {
+			fmt.Fprintln(w, repoRoot.root, revision)
+		}
+	}
+	if len(statics) > 0 {
+		fmt.Fprintln(w, "--glock static")
+		for _, v := range statics {
+			fmt.Fprintln(w, v.Cmd)
+		}
 	}
 }
 
